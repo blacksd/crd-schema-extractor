@@ -1,0 +1,22 @@
+# OS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temp
+tmp/
+*.tmp
+
+# Nix / direnv
+.direnv/
+result
+
+# Build artifacts
+dist/
+
+# Claude
+.claude/plans/

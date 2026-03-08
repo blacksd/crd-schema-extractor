@@ -22,6 +22,7 @@ go test ./...
 
 # Build via Nix
 nix build
+./result/bin/crd-schema-extractor version
 ```
 
 ## Usage
@@ -42,27 +43,36 @@ crd-schema-extractor extract sources/cert-manager.io.yaml --debug
 # Custom output directory
 crd-schema-extractor extract sources/ -o /tmp/schemas
 
-# Fetch only (download charts/manifests, skip extraction)
+# Parallel fetching (default: 4 concurrent sources)
+crd-schema-extractor extract sources/ -p 8
+
+# Fetch only (download charts/manifests to output dir, skip extraction)
 crd-schema-extractor extract sources/cert-manager.io.yaml --fetch-only
 
 # Validate source config files
 crd-schema-extractor validate sources/
 crd-schema-extractor validate sources/cert-manager.io.yaml
+
+# Print version
+crd-schema-extractor version
 ```
 
 When running from source with `go run`:
 
 ```bash
-go run ./cmd/extract/ extract sources/cert-manager.io.yaml --debug
-go run ./cmd/extract/ validate sources/
+go run ./cmd/crd-schema-extractor/ extract sources/cert-manager.io.yaml --debug
+go run ./cmd/crd-schema-extractor/ validate sources/
 ```
 
 ## How it works
 
 1. Source configs in `sources/*.yaml` declare upstream CRD locations (Helm chart or URL)
-2. The extractor fetches each source, scans for CRD documents, and extracts the `openAPIV3Schema` from every served version
-3. Schemas are written to `schemas/{group}/{apiVersion}/{kind}.json` with SHA-256 change detection
-4. Provenance metadata (`.provenance.json`) and a CycloneDX SBOM (`sbom.cdx.json`) are generated alongside
+2. The extractor fetches sources in parallel (configurable via `--parallel`), scans for CRD documents, and extracts the `openAPIV3Schema` from every served version
+3. Include/exclude filters narrow down which CRDs are kept
+4. Cross-source conflict detection catches the same group/kind/version with different content
+5. Identical duplicates are deduplicated (first occurrence wins)
+6. Schemas are written to `schemas/{group}/{apiVersion}/{kind}.json` with SHA-256 change detection
+7. Provenance metadata (`.provenance.json`) and a CycloneDX SBOM (`sbom.cdx.json`) are generated alongside
 
 Helm charts are scanned across all directories -- `crds/`, `templates/` (with Go template directive stripping), and any non-standard locations. This handles charts that place CRDs in different paths without requiring `helm template` at processing time.
 
@@ -104,15 +114,20 @@ check-jsonschema --schemafile source.schema.json sources/*.yaml
 ## Project structure
 
 ```
-cmd/extract/
-  main.go                          CLI entrypoint (cobra root command)
-  extract.go                       extract subcommand (fetch + extract + write)
+cmd/crd-schema-extractor/
+  main.go                          CLI entrypoint (cobra root command, version subcommand)
+  extract.go                       extract subcommand (parallel fetch + extract + write)
   validate.go                      validate subcommand (source config validation)
 internal/
-  source/source.go                Source config parsing
-  fetcher/                        Fetcher interface (Helm HTTP, Helm OCI, URL)
+  source/source.go                Source config parsing (directory or single file)
+  fetcher/
+    fetcher.go                    Fetcher interface, Result type, factory
+    helm_http.go                  Pure Go HTTP Helm repo fetcher (index.yaml + tarball)
+    helm_oci.go                   OCI registry fetcher using oras-go
+    url.go                        URL fetcher with retry
+    untar.go                      Tarball extraction utilities
   extractor/
-    extractor.go                  Extract() pipeline, CRD parser
+    extractor.go                  Extract() pipeline entry point, CRD parser
     process.go                    Chart scanning, template stripping dispatch
     strip.go                      Go template directive removal
     filter.go                     Include/exclude filtering
@@ -121,20 +136,20 @@ internal/
   sbom/sbom.go                    CycloneDX 1.5 SBOM generation
 sources/                          Source config files ({api-group}.yaml)
 schemas/                          Output directory
-source.schema.json                JSON Schema for source configs
+source.schema.json                JSON Schema for source configs (included in releases)
 flake.nix                         Nix flake (build + dev shell)
+.goreleaser.yaml                  Release configuration
 ```
 
-## Releases
+## CI/CD
 
-Releases are built by [goreleaser](https://goreleaser.com), triggered by pushing a semver tag:
+Three GitHub Actions workflows:
 
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
+- **test.yml** (on PR): runs `go vet`, `go test -race`, and an E2E test that extracts schemas from cert-manager to verify the full pipeline
+- **release-drafter.yml** (on push to main): auto-maintains a draft GitHub release with changelog from merged PRs
+- **release.yaml** (on tag push): runs goreleaser to build binaries for linux/darwin (amd64/arm64), attach them to the release along with `source.schema.json` and checksums
 
-Produces binaries for linux/darwin (amd64/arm64) with archives and checksums.
+Release flow: PRs merge to main, release-drafter updates the draft. When the draft is published, the tag is created, triggering goreleaser to build and attach artifacts.
 
 ## Version automation
 

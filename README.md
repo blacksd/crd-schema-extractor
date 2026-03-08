@@ -6,13 +6,15 @@ The extractor reads source configuration files, fetches CRDs from Helm charts (H
 
 ## Requirements
 
-- [Nix](https://nixos.org/) (recommended) -- provides Go, Helm, and all tooling via `nix develop`
-- Or manually: Go 1.25+, Helm 3
+- [Nix](https://nixos.org/) (recommended) -- provides Go and all tooling via `nix develop`
+- Or manually: Go 1.25+
+
+No external tools required at runtime. Helm chart fetching (both HTTP repos and OCI registries) and tarball extraction are implemented in pure Go using [oras-go](https://github.com/oras-project/oras-go).
 
 ## Quick start
 
 ```bash
-# Enter the dev shell (provides go, helm, check-jsonschema, yq, goreleaser)
+# Enter the dev shell (provides go, check-jsonschema, yq, goreleaser)
 nix develop
 
 # Run all tests
@@ -78,7 +80,7 @@ check-jsonschema --schemafile source.schema.json sources/*.yaml
 cmd/extract/main.go              CLI entrypoint
 internal/
   source/source.go                Source config parsing
-  fetcher/                        Fetcher interface (Helm, URL transports)
+  fetcher/                        Fetcher interface (Helm HTTP, Helm OCI, URL)
   extractor/
     extractor.go                  Extract() pipeline, CRD parser
     process.go                    Chart scanning, template stripping dispatch

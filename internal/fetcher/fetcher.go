@@ -1,11 +1,10 @@
 // Package fetcher abstracts the retrieval of upstream CRD content.
-// Each transport (Helm, URL, etc.) implements the Fetcher interface.
+// Each transport (Helm HTTP, Helm OCI, URL) implements the Fetcher interface.
 package fetcher
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
+	"strings"
 
 	"github.com/rs/zerolog"
 
@@ -23,34 +22,22 @@ type Fetcher interface {
 	Fetch(log zerolog.Logger, src source.Source) (*Result, error)
 }
 
-// CommandRunner abstracts exec.Command for testability.
-type CommandRunner interface {
-	Run(name string, args ...string) error
-	Output(name string, args ...string) ([]byte, error)
-}
-
-// ExecRunner is the production CommandRunner using os/exec.
-type ExecRunner struct{}
-
-func (r *ExecRunner) Run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
-}
-
-func (r *ExecRunner) Output(name string, args ...string) ([]byte, error) {
-	cmd := exec.Command(name, args...)
-	return cmd.Output()
-}
-
-// New returns the Fetcher for the given source type.
-func New(sourceType string, runner CommandRunner) (Fetcher, error) {
-	switch sourceType {
+// New returns the Fetcher for the given source.
+func New(src source.Source) (Fetcher, error) {
+	switch src.Type {
 	case "helm":
-		return &HelmFetcher{Runner: runner}, nil
+		return newHelmFetcher(src), nil
 	case "url":
 		return &URLFetcher{}, nil
 	default:
-		return nil, fmt.Errorf("unknown source type: %s", sourceType)
+		return nil, fmt.Errorf("unknown source type: %s", src.Type)
 	}
+}
+
+// newHelmFetcher returns the appropriate Helm fetcher based on the repo URL.
+func newHelmFetcher(src source.Source) Fetcher {
+	if strings.HasPrefix(src.Repo, "oci://") {
+		return &HelmOCIFetcher{}
+	}
+	return &HelmHTTPFetcher{}
 }

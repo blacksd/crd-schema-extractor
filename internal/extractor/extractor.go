@@ -35,8 +35,8 @@ type Conflict struct {
 }
 
 // Extract fetches CRDs from the given source and returns extracted schemas.
-func Extract(log zerolog.Logger, src source.Source, runner fetcher.CommandRunner) ([]CRDSchema, error) {
-	f, err := fetcher.New(src.Type, runner)
+func Extract(log zerolog.Logger, src source.Source) ([]CRDSchema, error) {
+	f, err := fetcher.New(src)
 	if err != nil {
 		return nil, err
 	}

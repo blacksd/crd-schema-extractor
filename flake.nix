@@ -14,12 +14,23 @@
     in
     {
       packages = forAllSystems ({ pkgs }: {
-        default = pkgs.buildGoModule {
-          pname = "crd-schema-extractor";
+        default = let
           version = "0.1.0";
+        in pkgs.buildGoModule {
+          pname = "crd-schema-extractor";
+          inherit version;
           src = ./.;
-          vendorHash = "sha256-9+/SUDnd4cH35NMMSFKZiDrRu14xYyuzXPoxrHIRu4U=";
+          vendorHash = "sha256-RjjtrUeDgCeEyh/mJVavLRqrz4r6F2SprAcbzcq5F6k=";
           subPackages = [ "cmd/extract" ];
+          ldflags = [
+            "-s" "-w"
+            "-X main.version=${version}"
+            "-X main.commit=${self.shortRev or "dirty"}"
+            "-X main.date=1970-01-01T00:00:00Z"
+          ];
+          postInstall = ''
+            mv $out/bin/extract $out/bin/crd-schema-extractor
+          '';
         };
       });
 
@@ -27,7 +38,6 @@
         default = pkgs.mkShell {
           packages = [
             pkgs.go
-            pkgs.kubernetes-helm
             pkgs.check-jsonschema
             pkgs.yq-go
             pkgs.goreleaser

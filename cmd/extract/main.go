@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -10,6 +11,11 @@ import (
 )
 
 var (
+	// Set via ldflags at build time by goreleaser.
+	version = "dev"
+	commit  = "unknown"
+	date    = "unknown"
+
 	debug  bool
 	logger zerolog.Logger
 )
@@ -45,8 +51,20 @@ When invoked without a subcommand, runs the full extract pipeline.`,
 
 	root.AddCommand(newExtractCmd())
 	root.AddCommand(newValidateCmd())
+	root.AddCommand(newVersionCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
+	}
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Args:  cobra.NoArgs,
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("crd-schema-extractor %s (commit: %s, built: %s)\n", version, commit, date)
+		},
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/blacksd/crd-schema-extractor/internal/extractor"
+	"github.com/blacksd/crd-schema-extractor/internal/fetcher"
 	"github.com/blacksd/crd-schema-extractor/internal/provenance"
 	"github.com/blacksd/crd-schema-extractor/internal/sbom"
 	"github.com/blacksd/crd-schema-extractor/internal/source"
@@ -55,6 +56,8 @@ func run(log zerolog.Logger, sourcesDir, outputDir, filterSource string) error {
 
 	log.Debug().Str("dir", sourcesDir).Msg("loaded source configs")
 
+	runner := &fetcher.ExecRunner{}
+
 	// Phase 1: Extract and filter all schemas
 	var allEntries []schemaEntry
 	var allSchemas []extractor.CRDSchema
@@ -70,7 +73,7 @@ func run(log zerolog.Logger, sourcesDir, outputDir, filterSource string) error {
 			srcLog := log.With().Str("source", src.Name).Str("type", src.Type).Str("version", src.Version).Logger()
 			srcLog.Info().Msg("processing")
 
-			schemas, err := extractor.Extract(srcLog, src)
+			schemas, err := extractor.Extract(srcLog, src, runner)
 			if err != nil {
 				srcLog.Warn().Err(err).Msg("extraction failed")
 				continue

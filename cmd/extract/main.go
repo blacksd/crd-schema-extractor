@@ -31,8 +31,11 @@ JSON Schema files with provenance metadata and a CycloneDX SBOM.
 When invoked without a subcommand, runs the full extract pipeline.`,
 		Args: cobra.MaximumNArgs(1),
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			logger = zerolog.New(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}).
-				With().Timestamp().Logger()
+			logger = zerolog.New(zerolog.ConsoleWriter{
+				Out:         os.Stderr,
+				TimeFormat:  time.RFC3339,
+				FieldsOrder: []string{"source"},
+			}).With().Timestamp().Logger()
 			if debug {
 				zerolog.SetGlobalLevel(zerolog.DebugLevel)
 			} else {

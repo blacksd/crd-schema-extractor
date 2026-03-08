@@ -35,27 +35,11 @@ jobs:
       - name: Build
         run: go build -o crd-schema-extractor ./cmd/crd-schema-extractor/
 
-      - name: Create test source config
-        run: |
-          mkdir -p e2e-sources
-          cat > e2e-sources/cert-manager.io.yaml <<'EOF'
-          sources:
-            - name: cert-manager
-              type: helm
-              repo: https://charts.jetstack.io
-              chart: cert-manager
-              version: v1.17.2
-              license: Apache-2.0
-              homepage: https://cert-manager.io
-              values:
-                crds.enabled: "true"
-              include:
-                - "cert-manager.io/*"
-                - "acme.cert-manager.io/*"
-          EOF
+      - name: Validate test sources
+        run: ./crd-schema-extractor validate test/sources/
 
       - name: Extract schemas
-        run: ./crd-schema-extractor extract e2e-sources/ -o e2e-schemas --debug
+        run: ./crd-schema-extractor extract test/sources/ -o e2e-schemas --debug
 
       - name: Verify output structure
         run: |
@@ -77,11 +61,8 @@ jobs:
           fi
           echo "OK: sbom.cdx.json exists"
 
-          # Verify schemas are valid JSON
-          for f in $(find e2e-schemas -name '*.json'); do
-            if ! python3 -m json.tool "$f" > /dev/null 2>&1; then
-              echo "FAIL: $f is not valid JSON"
-              exit 1
-            fi
-          done
-          echo "OK: all JSON files are valid"
+          # Verify extracted schemas are valid JSON Schemas
+          pip install --quiet check-jsonschema
+          schema_files=$(find e2e-schemas -name '*.json' -not -name 'sbom.*' -not -name '*.provenance.*')
+          check-jsonschema --check-metaschema $schema_files
+          echo "OK: all schemas pass metaschema validation"

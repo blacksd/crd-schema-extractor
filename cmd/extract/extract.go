@@ -32,7 +32,6 @@ retrieved without extracting or writing schemas.`,
 	}
 
 	cmd.Flags().StringP("output", "o", "schemas", "Output directory for extracted schemas")
-	cmd.Flags().String("source", "", "Process only the named source (by name field)")
 	cmd.Flags().Bool("fetch-only", false, "Fetch upstream content without extracting schemas")
 
 	return cmd
@@ -45,13 +44,12 @@ func extractRunE(cmd *cobra.Command, args []string) error {
 	}
 
 	outputDir, _ := cmd.Flags().GetString("output")
-	filterSource, _ := cmd.Flags().GetString("source")
 	fetchOnly, _ := cmd.Flags().GetBool("fetch-only")
 
 	if fetchOnly {
-		return runFetchOnly(sourcesPath, filterSource)
+		return runFetchOnly(sourcesPath)
 	}
-	return runExtract(sourcesPath, outputDir, filterSource)
+	return runExtract(sourcesPath, outputDir)
 }
 
 // schemaEntry tracks an extracted schema alongside its source metadata.
@@ -60,7 +58,7 @@ type schemaEntry struct {
 	src    source.Source
 }
 
-func runExtract(sourcesPath, outputDir, filterSource string) error {
+func runExtract(sourcesPath, outputDir string) error {
 	log := logger
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
@@ -78,10 +76,6 @@ func runExtract(sourcesPath, outputDir, filterSource string) error {
 
 	for _, sources := range grouped {
 		for _, src := range sources {
-			if filterSource != "" && src.Name != filterSource {
-				continue
-			}
-
 			totalSources++
 			srcLog := log.With().Str("source", src.Name).Str("type", src.Type).Str("version", src.Version).Logger()
 			srcLog.Info().Msg("processing")
@@ -202,7 +196,7 @@ func runExtract(sourcesPath, outputDir, filterSource string) error {
 	return nil
 }
 
-func runFetchOnly(sourcesPath, filterSource string) error {
+func runFetchOnly(sourcesPath string) error {
 	log := logger
 
 	grouped, err := source.Load(sourcesPath)
@@ -213,10 +207,6 @@ func runFetchOnly(sourcesPath, filterSource string) error {
 	totalSources := 0
 	for _, sources := range grouped {
 		for _, src := range sources {
-			if filterSource != "" && src.Name != filterSource {
-				continue
-			}
-
 			totalSources++
 			srcLog := log.With().Str("source", src.Name).Str("type", src.Type).Str("version", src.Version).Logger()
 			srcLog.Info().Msg("fetching")

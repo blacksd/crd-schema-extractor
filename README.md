@@ -36,8 +36,8 @@ crd-schema-extractor
 crd-schema-extractor extract sources/
 crd-schema-extractor extract sources/cert-manager.io.yaml
 
-# Filter to a single source by name, with debug logging
-crd-schema-extractor extract sources/ --source cert-manager --debug
+# Extract a single source with debug logging
+crd-schema-extractor extract sources/cert-manager.io.yaml --debug
 
 # Custom output directory
 crd-schema-extractor extract sources/ -o /tmp/schemas
@@ -53,7 +53,7 @@ crd-schema-extractor validate sources/cert-manager.io.yaml
 When running from source with `go run`:
 
 ```bash
-go run ./cmd/extract/ extract sources/ --source cert-manager --debug
+go run ./cmd/extract/ extract sources/cert-manager.io.yaml --debug
 go run ./cmd/extract/ validate sources/
 ```
 

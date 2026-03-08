@@ -46,6 +46,7 @@ When invoked without a subcommand, runs the full extract pipeline.`,
 	// Root-level flags that also apply when invoked without subcommand
 	root.Flags().StringP("output", "o", "schemas", "Output directory for extracted schemas")
 	root.Flags().Bool("fetch-only", false, "Fetch upstream content without extracting schemas")
+	root.Flags().IntP("parallel", "p", 4, "Maximum number of sources to fetch in parallel")
 
 	root.PersistentFlags().BoolVar(&debug, "debug", false, "Enable debug logging")
 

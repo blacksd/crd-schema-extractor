@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -33,6 +34,7 @@ retrieved without extracting or writing schemas.`,
 
 	cmd.Flags().StringP("output", "o", "schemas", "Output directory for extracted schemas")
 	cmd.Flags().Bool("fetch-only", false, "Fetch upstream content without extracting schemas")
+	cmd.Flags().IntP("parallel", "p", 4, "Maximum number of sources to fetch in parallel")
 
 	return cmd
 }
@@ -45,11 +47,15 @@ func extractRunE(cmd *cobra.Command, args []string) error {
 
 	outputDir, _ := cmd.Flags().GetString("output")
 	fetchOnly, _ := cmd.Flags().GetBool("fetch-only")
+	parallel, _ := cmd.Flags().GetInt("parallel")
+	if parallel < 1 {
+		parallel = 1
+	}
 
 	if fetchOnly {
-		return runFetchOnly(sourcesPath, outputDir)
+		return runFetchOnly(sourcesPath, outputDir, parallel)
 	}
-	return runExtract(sourcesPath, outputDir)
+	return runExtract(sourcesPath, outputDir, parallel)
 }
 
 // schemaEntry tracks an extracted schema alongside its source metadata.
@@ -58,7 +64,7 @@ type schemaEntry struct {
 	src    source.Source
 }
 
-func runExtract(sourcesPath, outputDir string) error {
+func runExtract(sourcesPath, outputDir string, parallel int) error {
 	log := logger
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
@@ -67,28 +73,44 @@ func runExtract(sourcesPath, outputDir string) error {
 		return err
 	}
 
-	log.Debug().Str("path", sourcesPath).Msg("loaded source configs")
+	log.Debug().Str("path", sourcesPath).Int("parallel", parallel).Msg("loaded source configs")
 
-	// Phase 1: Extract and filter all schemas
-	var allEntries []schemaEntry
-	var allSchemas []extractor.CRDSchema
-	totalSources := 0
-
+	// Flatten all sources for parallel dispatch
+	var allSrcList []source.Source
 	for _, sources := range grouped {
-		for _, src := range sources {
-			totalSources++
+		allSrcList = append(allSrcList, sources...)
+	}
+	totalSources := len(allSrcList)
+
+	// Phase 1: Extract and filter all schemas (parallel)
+	type result struct {
+		entries []schemaEntry
+		schemas []extractor.CRDSchema
+	}
+
+	results := make([]result, totalSources)
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+
+	for i, src := range allSrcList {
+		wg.Add(1)
+		go func(idx int, src source.Source) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
 			srcLog := log.With().Str("source", src.Name).Str("type", src.Type).Str("version", src.Version).Logger()
 			srcLog.Info().Msg("processing")
 
 			schemas, err := extractor.Extract(srcLog, src)
 			if err != nil {
 				srcLog.Warn().Err(err).Msg("extraction failed")
-				continue
+				return
 			}
 
 			// Tag schemas with their source name
-			for i := range schemas {
-				schemas[i].SourceName = src.Name
+			for j := range schemas {
+				schemas[j].SourceName = src.Name
 			}
 
 			// Apply include/exclude filters
@@ -96,11 +118,21 @@ func runExtract(sourcesPath, outputDir string) error {
 
 			srcLog.Info().Int("count", len(schemas)).Msg("schemas extracted")
 
+			var entries []schemaEntry
 			for _, s := range schemas {
-				allEntries = append(allEntries, schemaEntry{schema: s, src: src})
-				allSchemas = append(allSchemas, s)
+				entries = append(entries, schemaEntry{schema: s, src: src})
 			}
-		}
+			results[idx] = result{entries: entries, schemas: schemas}
+		}(i, src)
+	}
+	wg.Wait()
+
+	// Collect results in deterministic order
+	var allEntries []schemaEntry
+	var allSchemas []extractor.CRDSchema
+	for _, r := range results {
+		allEntries = append(allEntries, r.entries...)
+		allSchemas = append(allSchemas, r.schemas...)
 	}
 
 	// Phase 2: Detect conflicts
@@ -175,8 +207,7 @@ func runExtract(sourcesPath, outputDir string) error {
 	}
 
 	// Generate SBOM
-	allSources := source.All(grouped)
-	sbomJSON, err := sbom.Generate(allSources, timestamp)
+	sbomJSON, err := sbom.Generate(allSrcList, timestamp)
 	if err != nil {
 		return err
 	}
@@ -198,7 +229,7 @@ func runExtract(sourcesPath, outputDir string) error {
 	return nil
 }
 
-func runFetchOnly(sourcesPath, outputDir string) error {
+func runFetchOnly(sourcesPath, outputDir string, parallel int) error {
 	log := logger
 
 	grouped, err := source.Load(sourcesPath)
@@ -206,56 +237,90 @@ func runFetchOnly(sourcesPath, outputDir string) error {
 		return err
 	}
 
-	totalSources := 0
+	// Flatten all sources for parallel dispatch
+	var allSrcList []source.Source
 	for _, sources := range grouped {
-		for _, src := range sources {
-			totalSources++
+		allSrcList = append(allSrcList, sources...)
+	}
+	totalSources := len(allSrcList)
+
+	// Parallel fetch, sequential disk write
+	type fetchResult struct {
+		src    source.Source
+		result *fetcher.Result
+		err    error
+	}
+
+	results := make([]fetchResult, totalSources)
+	sem := make(chan struct{}, parallel)
+	var wg sync.WaitGroup
+
+	for i, src := range allSrcList {
+		wg.Add(1)
+		go func(idx int, src source.Source) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
 			srcLog := log.With().Str("source", src.Name).Str("type", src.Type).Str("version", src.Version).Logger()
 			srcLog.Info().Msg("fetching")
 
 			f, err := fetcher.New(src)
 			if err != nil {
 				srcLog.Warn().Err(err).Msg("creating fetcher failed")
-				continue
+				results[idx] = fetchResult{src: src, err: err}
+				return
 			}
 
-			result, err := f.Fetch(srcLog, src)
+			r, err := f.Fetch(srcLog, src)
 			if err != nil {
 				srcLog.Warn().Err(err).Msg("fetch failed")
+				results[idx] = fetchResult{src: src, err: err}
+				return
+			}
+			results[idx] = fetchResult{src: src, result: r}
+		}(i, src)
+	}
+	wg.Wait()
+
+	// Sequential disk writes
+	for _, fr := range results {
+		if fr.err != nil || fr.result == nil {
+			continue
+		}
+		src := fr.src
+		srcLog := log.With().Str("source", src.Name).Logger()
+
+		destDir := filepath.Join(outputDir, src.Name)
+		if err := os.MkdirAll(destDir, 0755); err != nil {
+			return fmt.Errorf("creating output dir for %s: %w", src.Name, err)
+		}
+
+		if fr.result.Dir != "" {
+			// Move chart contents from temp dir into output
+			chartDir := filepath.Join(fr.result.Dir, "chart")
+			entries, err := os.ReadDir(chartDir)
+			if err != nil {
+				srcLog.Warn().Err(err).Msg("reading fetched chart dir")
+				os.RemoveAll(fr.result.Dir)
 				continue
 			}
-
-			destDir := filepath.Join(outputDir, src.Name)
-			if err := os.MkdirAll(destDir, 0755); err != nil {
-				return fmt.Errorf("creating output dir for %s: %w", src.Name, err)
+			for _, entry := range entries {
+				from := filepath.Join(chartDir, entry.Name())
+				to := filepath.Join(destDir, entry.Name())
+				if err := os.Rename(from, to); err != nil {
+					srcLog.Warn().Err(err).Str("from", from).Str("to", to).Msg("moving chart content")
+				}
 			}
-
-			if result.Dir != "" {
-				// Move chart contents from temp dir into output
-				chartDir := filepath.Join(result.Dir, "chart")
-				entries, err := os.ReadDir(chartDir)
-				if err != nil {
-					srcLog.Warn().Err(err).Msg("reading fetched chart dir")
-					os.RemoveAll(result.Dir)
-					continue
-				}
-				for _, entry := range entries {
-					from := filepath.Join(chartDir, entry.Name())
-					to := filepath.Join(destDir, entry.Name())
-					if err := os.Rename(from, to); err != nil {
-						srcLog.Warn().Err(err).Str("from", from).Str("to", to).Msg("moving chart content")
-					}
-				}
-				os.RemoveAll(result.Dir)
-				srcLog.Info().Str("dir", destDir).Msg("fetched chart")
-			} else {
-				// Write raw manifest data to file
-				manifestPath := filepath.Join(destDir, "manifest.yaml")
-				if err := os.WriteFile(manifestPath, result.Data, 0644); err != nil {
-					return fmt.Errorf("writing manifest for %s: %w", src.Name, err)
-				}
-				srcLog.Info().Str("file", manifestPath).Int("bytes", len(result.Data)).Msg("fetched manifest")
+			os.RemoveAll(fr.result.Dir)
+			srcLog.Info().Str("dir", destDir).Msg("fetched chart")
+		} else {
+			// Write raw manifest data to file
+			manifestPath := filepath.Join(destDir, "manifest.yaml")
+			if err := os.WriteFile(manifestPath, fr.result.Data, 0644); err != nil {
+				return fmt.Errorf("writing manifest for %s: %w", src.Name, err)
 			}
+			srcLog.Info().Str("file", manifestPath).Int("bytes", len(fr.result.Data)).Msg("fetched manifest")
 		}
 	}
 

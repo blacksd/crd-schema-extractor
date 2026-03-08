@@ -47,7 +47,7 @@ func extractRunE(cmd *cobra.Command, args []string) error {
 	fetchOnly, _ := cmd.Flags().GetBool("fetch-only")
 
 	if fetchOnly {
-		return runFetchOnly(sourcesPath)
+		return runFetchOnly(sourcesPath, outputDir)
 	}
 	return runExtract(sourcesPath, outputDir)
 }
@@ -196,7 +196,7 @@ func runExtract(sourcesPath, outputDir string) error {
 	return nil
 }
 
-func runFetchOnly(sourcesPath string) error {
+func runFetchOnly(sourcesPath, outputDir string) error {
 	log := logger
 
 	grouped, err := source.Load(sourcesPath)
@@ -223,15 +223,41 @@ func runFetchOnly(sourcesPath string) error {
 				continue
 			}
 
+			destDir := filepath.Join(outputDir, src.Name)
+			if err := os.MkdirAll(destDir, 0755); err != nil {
+				return fmt.Errorf("creating output dir for %s: %w", src.Name, err)
+			}
+
 			if result.Dir != "" {
-				srcLog.Info().Str("dir", result.Dir).Msg("fetched chart (temp dir preserved)")
+				// Move chart contents from temp dir into output
+				chartDir := filepath.Join(result.Dir, "chart")
+				entries, err := os.ReadDir(chartDir)
+				if err != nil {
+					srcLog.Warn().Err(err).Msg("reading fetched chart dir")
+					os.RemoveAll(result.Dir)
+					continue
+				}
+				for _, entry := range entries {
+					from := filepath.Join(chartDir, entry.Name())
+					to := filepath.Join(destDir, entry.Name())
+					if err := os.Rename(from, to); err != nil {
+						srcLog.Warn().Err(err).Str("from", from).Str("to", to).Msg("moving chart content")
+					}
+				}
+				os.RemoveAll(result.Dir)
+				srcLog.Info().Str("dir", destDir).Msg("fetched chart")
 			} else {
-				srcLog.Info().Int("bytes", len(result.Data)).Msg("fetched manifest")
+				// Write raw manifest data to file
+				manifestPath := filepath.Join(destDir, "manifest.yaml")
+				if err := os.WriteFile(manifestPath, result.Data, 0644); err != nil {
+					return fmt.Errorf("writing manifest for %s: %w", src.Name, err)
+				}
+				srcLog.Info().Str("file", manifestPath).Int("bytes", len(result.Data)).Msg("fetched manifest")
 			}
 		}
 	}
 
-	log.Info().Int("sources", totalSources).Msg("fetch complete")
+	log.Info().Int("sources", totalSources).Str("output", outputDir).Msg("fetch complete")
 	return nil
 }
 

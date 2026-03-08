@@ -27,11 +27,8 @@ archives:
 checksum:
   name_template: checksums.txt
 
+release:
+  mode: append
+
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - "^docs:"
-      - "^test:"
-      - "^ci:"
-      - "^chore:"
+  disable: true

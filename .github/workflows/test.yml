@@ -1,0 +1,87 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Unit tests
+        run: go test ./... -count=1 -race
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build -o crd-schema-extractor ./cmd/extract/
+
+      - name: Create test source config
+        run: |
+          mkdir -p e2e-sources
+          cat > e2e-sources/cert-manager.io.yaml <<'EOF'
+          sources:
+            - name: cert-manager
+              type: helm
+              repo: https://charts.jetstack.io
+              chart: cert-manager
+              version: v1.17.2
+              license: Apache-2.0
+              homepage: https://cert-manager.io
+              values:
+                crds.enabled: "true"
+              include:
+                - "cert-manager.io/*"
+                - "acme.cert-manager.io/*"
+          EOF
+
+      - name: Extract schemas
+        run: ./crd-schema-extractor extract e2e-sources/ -o e2e-schemas --debug
+
+      - name: Verify output structure
+        run: |
+          echo "--- Schema files ---"
+          find e2e-schemas -name '*.json' -not -name 'sbom.*' | sort
+
+          # Expect at least one schema file
+          count=$(find e2e-schemas -name '*.json' -not -name 'sbom.*' -not -name '*.provenance.*' | wc -l)
+          if [ "$count" -lt 1 ]; then
+            echo "FAIL: expected at least 1 schema file, got $count"
+            exit 1
+          fi
+          echo "OK: $count schema files extracted"
+
+          # Verify SBOM exists
+          if [ ! -f e2e-schemas/sbom.cdx.json ]; then
+            echo "FAIL: sbom.cdx.json not found"
+            exit 1
+          fi
+          echo "OK: sbom.cdx.json exists"
+
+          # Verify schemas are valid JSON
+          for f in $(find e2e-schemas -name '*.json'); do
+            if ! python3 -m json.tool "$f" > /dev/null 2>&1; then
+              echo "FAIL: $f is not valid JSON"
+              exit 1
+            fi
+          done
+          echo "OK: all JSON files are valid"

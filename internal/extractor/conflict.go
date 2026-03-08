@@ -3,7 +3,6 @@ package extractor
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/rs/zerolog"
 )
@@ -31,19 +30,17 @@ func dedup(schemas []CRDSchema) []CRDSchema {
 // conflicting entries: same group/kind/version but different schema content.
 // Returns nil if no conflicts are found. Identical duplicates are logged
 // as informational messages but not treated as conflicts.
-func DetectConflicts(log zerolog.Logger, allSchemas []CRDSchema) []Conflict {
-	type entry struct {
-		schema     json.RawMessage
-		sourceName string
-	}
-
-	seen := make(map[string][]entry)
+//
+// The returned map is keyed by SchemaKey; each value contains the conflicting
+// CRDSchema entries (with their SourceName already set).
+func DetectConflicts(log zerolog.Logger, allSchemas []CRDSchema) map[string][]CRDSchema {
+	seen := make(map[string][]CRDSchema)
 	for _, s := range allSchemas {
 		key := SchemaKey(s)
-		seen[key] = append(seen[key], entry{schema: s.Schema, sourceName: s.SourceName})
+		seen[key] = append(seen[key], s)
 	}
 
-	var conflicts []Conflict
+	conflicts := make(map[string][]CRDSchema)
 	for key, entries := range seen {
 		if len(entries) < 2 {
 			continue
@@ -52,16 +49,15 @@ func DetectConflicts(log zerolog.Logger, allSchemas []CRDSchema) []Conflict {
 		// Check if all entries are identical
 		allIdentical := true
 		for i := 1; i < len(entries); i++ {
-			if !jsonEqual(entries[0].schema, entries[i].schema) {
+			if !jsonEqual(entries[0].Schema, entries[i].Schema) {
 				allIdentical = false
 				break
 			}
 		}
 
-		parts := strings.SplitN(key, "/", 3)
 		sources := make([]string, len(entries))
 		for i, e := range entries {
-			sources[i] = e.sourceName
+			sources[i] = e.SourceName
 		}
 
 		if allIdentical {
@@ -69,14 +65,12 @@ func DetectConflicts(log zerolog.Logger, allSchemas []CRDSchema) []Conflict {
 			continue
 		}
 
-		conflicts = append(conflicts, Conflict{
-			Group:      parts[0],
-			Kind:       parts[1],
-			APIVersion: parts[2],
-			Sources:    sources,
-		})
+		conflicts[key] = entries
 	}
 
+	if len(conflicts) == 0 {
+		return nil
+	}
 	return conflicts
 }
 

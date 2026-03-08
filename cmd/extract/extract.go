@@ -106,12 +106,14 @@ func runExtract(sourcesPath, outputDir string) error {
 	// Phase 2: Detect conflicts
 	conflicts := extractor.DetectConflicts(log, allSchemas)
 	if len(conflicts) > 0 {
-		for _, c := range conflicts {
+		for key, entries := range conflicts {
+			sources := make([]string, len(entries))
+			for i, e := range entries {
+				sources[i] = e.SourceName
+			}
 			log.Error().
-				Str("group", c.Group).
-				Str("kind", c.Kind).
-				Str("apiVersion", c.APIVersion).
-				Strs("sources", c.Sources).
+				Str("schema", key).
+				Strs("sources", sources).
 				Msg("schema conflict")
 		}
 		return fmt.Errorf("%d schema conflicts detected, resolve with include/exclude filters", len(conflicts))

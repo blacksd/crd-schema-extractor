@@ -66,18 +66,19 @@ func TestDetectConflictsDifferentContent(t *testing.T) {
 		t.Fatalf("expected 1 conflict, got %d", len(conflicts))
 	}
 
-	c := conflicts[0]
-	if c.Group != "a.io" {
-		t.Errorf("conflict group = %q, want %q", c.Group, "a.io")
+	key := "a.io/Foo/v1"
+	entries, ok := conflicts[key]
+	if !ok {
+		t.Fatalf("expected conflict for key %q", key)
 	}
-	if c.Kind != "Foo" {
-		t.Errorf("conflict kind = %q, want %q", c.Kind, "Foo")
+	if len(entries) != 2 {
+		t.Errorf("expected 2 conflicting entries, got %d", len(entries))
 	}
-	if c.APIVersion != "v1" {
-		t.Errorf("conflict apiVersion = %q, want %q", c.APIVersion, "v1")
+	if entries[0].SourceName != "src-a" {
+		t.Errorf("entries[0].SourceName = %q, want %q", entries[0].SourceName, "src-a")
 	}
-	if len(c.Sources) != 2 {
-		t.Errorf("expected 2 conflicting sources, got %d", len(c.Sources))
+	if entries[1].SourceName != "src-b" {
+		t.Errorf("entries[1].SourceName = %q, want %q", entries[1].SourceName, "src-b")
 	}
 }
 
@@ -107,8 +108,9 @@ func TestDetectConflictsThreeSources(t *testing.T) {
 	if len(conflicts) != 1 {
 		t.Fatalf("expected 1 conflict, got %d", len(conflicts))
 	}
-	if len(conflicts[0].Sources) != 3 {
-		t.Errorf("expected 3 sources in conflict, got %d", len(conflicts[0].Sources))
+	entries := conflicts["a.io/Foo/v1"]
+	if len(entries) != 3 {
+		t.Errorf("expected 3 entries in conflict, got %d", len(entries))
 	}
 }
 

@@ -26,14 +26,6 @@ type CRDSchema struct {
 	SourceName string // tracks which source produced this schema
 }
 
-// Conflict represents a schema key produced by multiple sources with different content.
-type Conflict struct {
-	Group      string
-	Kind       string
-	APIVersion string
-	Sources    []string
-}
-
 // Extract fetches CRDs from the given source and returns extracted schemas.
 func Extract(log zerolog.Logger, src source.Source) ([]CRDSchema, error) {
 	f, err := fetcher.New(src)

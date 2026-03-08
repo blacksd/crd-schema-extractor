@@ -3,7 +3,7 @@ version: 2
 project_name: crd-schema-extractor
 
 builds:
-  - main: ./cmd/extract
+  - main: ./cmd/crd-schema-extractor
     binary: crd-schema-extractor
     env:
       - CGO_ENABLED=0

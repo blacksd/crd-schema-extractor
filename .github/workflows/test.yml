@@ -33,7 +33,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Build
-        run: go build -o crd-schema-extractor ./cmd/extract/
+        run: go build -o crd-schema-extractor ./cmd/crd-schema-extractor/
 
       - name: Create test source config
         run: |

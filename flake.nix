@@ -21,16 +21,13 @@
           inherit version;
           src = ./.;
           vendorHash = "sha256-RjjtrUeDgCeEyh/mJVavLRqrz4r6F2SprAcbzcq5F6k=";
-          subPackages = [ "cmd/extract" ];
+          subPackages = [ "cmd/crd-schema-extractor" ];
           ldflags = [
             "-s" "-w"
             "-X main.version=${version}"
             "-X main.commit=${self.shortRev or "dirty"}"
             "-X main.date=1970-01-01T00:00:00Z"
           ];
-          postInstall = ''
-            mv $out/bin/extract $out/bin/crd-schema-extractor
-          '';
         };
       });
 

@@ -163,6 +163,70 @@ func TestLoadAllMissingDir(t *testing.T) {
 	}
 }
 
+func TestLoadDirectory(t *testing.T) {
+	dir := t.TempDir()
+	content := `sources:
+  - name: test-op
+    type: helm
+    repo: https://example.com/charts
+    chart: test-op
+    version: v1.0.0
+    license: Apache-2.0
+    homepage: https://example.com
+`
+	if err := os.WriteFile(filepath.Join(dir, "example.com.yaml"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	grouped, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load(dir): %v", err)
+	}
+	if _, ok := grouped["example.com"]; !ok {
+		t.Error("expected API group 'example.com'")
+	}
+}
+
+func TestLoadSingleFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cert-manager.io.yaml")
+	content := `sources:
+  - name: cert-manager
+    type: helm
+    repo: https://charts.jetstack.io
+    chart: cert-manager
+    version: v1.17.2
+    license: Apache-2.0
+    homepage: https://cert-manager.io
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	grouped, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load(file): %v", err)
+	}
+
+	sources, ok := grouped["cert-manager.io"]
+	if !ok {
+		t.Fatal("expected API group 'cert-manager.io'")
+	}
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+	if sources[0].Name != "cert-manager" {
+		t.Errorf("name = %q, want %q", sources[0].Name, "cert-manager")
+	}
+}
+
+func TestLoadMissingPath(t *testing.T) {
+	_, err := Load("/nonexistent/path")
+	if err == nil {
+		t.Fatal("expected error for missing path")
+	}
+}
+
 func TestAll(t *testing.T) {
 	grouped := map[string][]Source{
 		"a.example.com": {{Name: "a1"}, {Name: "a2"}},

@@ -30,6 +30,37 @@ type File struct {
 	Sources []Source `json:"sources"`
 }
 
+// Load reads source configs from a path, which can be a single YAML file
+// or a directory of YAML files. Returns sources grouped by API group.
+func Load(path string) (map[string][]Source, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, fmt.Errorf("accessing %s: %w", path, err)
+	}
+	if info.IsDir() {
+		return LoadAll(path)
+	}
+	return loadFile(path)
+}
+
+// loadFile reads a single source config YAML file.
+func loadFile(path string) (map[string][]Source, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", path, err)
+	}
+
+	var sf File
+	if err := yaml.Unmarshal(data, &sf); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+
+	name := filepath.Base(path)
+	apiGroup := strings.TrimSuffix(strings.TrimSuffix(name, ".yaml"), ".yml")
+
+	return map[string][]Source{apiGroup: sf.Sources}, nil
+}
+
 // LoadAll reads all YAML files from the given directory and returns the
 // parsed sources along with the API group derived from the filename.
 func LoadAll(dir string) (map[string][]Source, error) {

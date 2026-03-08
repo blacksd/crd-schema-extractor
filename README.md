@@ -20,15 +20,41 @@ nix develop
 # Run all tests
 go test ./...
 
-# Extract schemas from all configured sources
-go run ./cmd/extract/ -sources sources -output schemas
-
-# Extract a single source by name
-go run ./cmd/extract/ -source cert-manager -debug
-
 # Build via Nix
 nix build
-./result/bin/crd-schema-extractor --sources=sources --output=schemas
+```
+
+## Usage
+
+The CLI accepts a path argument (directory of YAML files or a single file) and defaults to `sources/` when omitted.
+
+```bash
+# Extract schemas from all configured sources (default: sources/ -> schemas/)
+crd-schema-extractor
+
+# Extract from a specific directory or file
+crd-schema-extractor extract sources/
+crd-schema-extractor extract sources/cert-manager.io.yaml
+
+# Filter to a single source by name, with debug logging
+crd-schema-extractor extract sources/ --source cert-manager --debug
+
+# Custom output directory
+crd-schema-extractor extract sources/ -o /tmp/schemas
+
+# Fetch only (download charts/manifests, skip extraction)
+crd-schema-extractor extract sources/cert-manager.io.yaml --fetch-only
+
+# Validate source config files
+crd-schema-extractor validate sources/
+crd-schema-extractor validate sources/cert-manager.io.yaml
+```
+
+When running from source with `go run`:
+
+```bash
+go run ./cmd/extract/ extract sources/ --source cert-manager --debug
+go run ./cmd/extract/ validate sources/
 ```
 
 ## How it works
@@ -68,16 +94,20 @@ Source types:
 | `helm` | `repo`, `chart` | Helm chart from HTTP or OCI (`oci://` prefix) repository |
 | `url` | `url` | Direct HTTP URL to a YAML manifest containing CRDs |
 
-Source configs are validated against `source.schema.json`:
+Source configs can be validated with the built-in command or against `source.schema.json`:
 
 ```bash
+crd-schema-extractor validate sources/
 check-jsonschema --schemafile source.schema.json sources/*.yaml
 ```
 
 ## Project structure
 
 ```
-cmd/extract/main.go              CLI entrypoint
+cmd/extract/
+  main.go                          CLI entrypoint (cobra root command)
+  extract.go                       extract subcommand (fetch + extract + write)
+  validate.go                      validate subcommand (source config validation)
 internal/
   source/source.go                Source config parsing
   fetcher/                        Fetcher interface (Helm HTTP, Helm OCI, URL)

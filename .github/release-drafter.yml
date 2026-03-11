@@ -17,6 +17,20 @@ categories:
       - dependencies
       - ci
 
+autolabeler:
+  - label: feature
+    title:
+      - '/^feat(\(.+\))?[!]?:/'
+  - label: fix
+    title:
+      - '/^fix(\(.+\))?[!]?:/'
+  - label: chore
+    title:
+      - '/^(chore|ci|docs|style|refactor|perf|test|build)(\(.+\))?[!]?:/'
+  - label: major
+    title:
+      - '/^[a-z]+(\(.+\))?!:/'
+
 change-template: "- $TITLE (#$NUMBER)"
 change-title-escapes: '\<*_&'
 

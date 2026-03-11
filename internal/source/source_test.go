@@ -227,6 +227,44 @@ func TestLoadMissingPath(t *testing.T) {
 	}
 }
 
+func TestResolvedURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		src     Source
+		want    string
+	}{
+		{
+			name: "placeholder replaced",
+			src:  Source{URL: "https://github.com/org/repo/releases/download/{version}/crds.yaml", Version: "v1.7.1"},
+			want: "https://github.com/org/repo/releases/download/v1.7.1/crds.yaml",
+		},
+		{
+			name: "multiple placeholders replaced",
+			src:  Source{URL: "https://example.com/{version}/download/{version}/crds.yaml", Version: "v2.0.0"},
+			want: "https://example.com/v2.0.0/download/v2.0.0/crds.yaml",
+		},
+		{
+			name: "no placeholder returns url as-is",
+			src:  Source{URL: "https://example.com/crds.yaml", Version: "v1.0.0"},
+			want: "https://example.com/crds.yaml",
+		},
+		{
+			name: "empty url",
+			src:  Source{URL: "", Version: "v1.0.0"},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.src.ResolvedURL()
+			if got != tt.want {
+				t.Errorf("ResolvedURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAll(t *testing.T) {
 	grouped := map[string][]Source{
 		"a.example.com": {{Name: "a1"}, {Name: "a2"}},

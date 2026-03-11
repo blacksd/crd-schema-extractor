@@ -30,16 +30,18 @@ func (f *URLFetcher) Fetch(log zerolog.Logger, src source.Source) (*Result, erro
 		client = &http.Client{Timeout: httpTimeout}
 	}
 
+	resolvedURL := src.ResolvedURL()
+
 	var resp *http.Response
 	var lastErr error
 
 	for attempt := 1; attempt <= maxRetries; attempt++ {
-		log.Debug().Str("url", src.URL).Int("attempt", attempt).Msg("fetching manifest")
+		log.Debug().Str("url", resolvedURL).Int("attempt", attempt).Msg("fetching manifest")
 
 		var err error
-		resp, err = client.Get(src.URL)
+		resp, err = client.Get(resolvedURL)
 		if err != nil {
-			lastErr = fmt.Errorf("downloading %s: %w", src.URL, err)
+			lastErr = fmt.Errorf("downloading %s: %w", resolvedURL, err)
 			log.Warn().Err(err).Int("attempt", attempt).Int("max", maxRetries).Msg("fetch failed")
 			if attempt < maxRetries {
 				time.Sleep(retryInterval)
@@ -48,7 +50,7 @@ func (f *URLFetcher) Fetch(log zerolog.Logger, src source.Source) (*Result, erro
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
-			lastErr = fmt.Errorf("downloading %s: HTTP %d", src.URL, resp.StatusCode)
+			lastErr = fmt.Errorf("downloading %s: HTTP %d", resolvedURL, resp.StatusCode)
 			log.Warn().Int("status", resp.StatusCode).Int("attempt", attempt).Int("max", maxRetries).Msg("fetch returned non-200")
 			if attempt < maxRetries {
 				time.Sleep(retryInterval)
@@ -67,9 +69,9 @@ func (f *URLFetcher) Fetch(log zerolog.Logger, src source.Source) (*Result, erro
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading response from %s: %w", src.URL, err)
+		return nil, fmt.Errorf("reading response from %s: %w", resolvedURL, err)
 	}
 
-	log.Debug().Str("url", src.URL).Int("bytes", len(data)).Msg("manifest downloaded")
+	log.Debug().Str("url", resolvedURL).Int("bytes", len(data)).Msg("manifest downloaded")
 	return &Result{Data: data}, nil
 }

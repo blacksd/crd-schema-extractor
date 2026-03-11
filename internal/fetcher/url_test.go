@@ -85,6 +85,33 @@ func TestURLFetcherRetryExhaustion(t *testing.T) {
 	}
 }
 
+func TestURLFetcherVersionInterpolation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/releases/download/v1.7.1/crds.yaml" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte("interpolated"))
+	}))
+	defer srv.Close()
+
+	f := &URLFetcher{Client: srv.Client()}
+	result, err := f.Fetch(nopLog, source.Source{
+		Name:    "test-interp",
+		Type:    "url",
+		URL:     srv.URL + "/releases/download/{version}/crds.yaml",
+		Version: "v1.7.1",
+	})
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+
+	if string(result.Data) != "interpolated" {
+		t.Errorf("Data = %q, want %q", string(result.Data), "interpolated")
+	}
+}
+
 func TestURLFetcherConnectionError(t *testing.T) {
 	// Use a URL that will fail to connect
 	f := &URLFetcher{Client: &http.Client{}}

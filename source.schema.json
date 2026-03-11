@@ -48,7 +48,7 @@
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Direct URL to a YAML manifest containing CRDs. Required when type is url."
+            "description": "Direct URL to a YAML manifest containing CRDs. Required when type is url. Supports {version} placeholder which is replaced with the version field value before fetching."
           },
           "version": {
             "type": "string",

@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -60,6 +61,12 @@ func validateRunE(cmd *cobra.Command, args []string) error {
 		case "url":
 			if src.URL == "" {
 				errs = append(errs, fmt.Sprintf("source %s: url type requires 'url' field", src.Name))
+			}
+			if strings.Contains(src.URL, "{version}") && src.Version == "" {
+				errs = append(errs, fmt.Sprintf("source %s: url contains {version} placeholder but version is empty", src.Name))
+			}
+			if src.URL != "" && !strings.Contains(src.URL, "{version}") {
+				errs = append(errs, fmt.Sprintf("source %s: url must contain {version} placeholder to keep version in sync", src.Name))
 			}
 		case "":
 			errs = append(errs, fmt.Sprintf("source %s: missing 'type' field", src.Name))

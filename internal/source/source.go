@@ -99,6 +99,13 @@ func LoadAll(dir string) (map[string][]Source, error) {
 	return result, nil
 }
 
+// ResolvedURL returns the source URL with {version} placeholders replaced
+// by the source's Version field value. If the URL contains no placeholders,
+// it is returned as-is.
+func (s Source) ResolvedURL() string {
+	return strings.ReplaceAll(s.URL, "{version}", s.Version)
+}
+
 // All returns a flat list of all sources across all API groups.
 func All(grouped map[string][]Source) []Source {
 	var all []Source

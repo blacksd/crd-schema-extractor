@@ -32,14 +32,15 @@
             "type": "string",
             "enum": [
               "helm",
-              "url"
+              "url",
+              "git+github"
             ],
-            "description": "Source type: helm chart or direct URL."
+            "description": "Source type: helm chart, direct URL, or git repository."
           },
           "repo": {
             "type": "string",
             "format": "uri",
-            "description": "Helm repository URL. Required when type is helm."
+            "description": "Repository URL. For helm: chart repository URL. For git+github: GitHub repository URL (https://github.com/owner/repo)."
           },
           "chart": {
             "type": "string",
@@ -49,6 +50,10 @@
             "type": "string",
             "format": "uri",
             "description": "Direct URL to a YAML manifest containing CRDs. Required when type is url. Supports {version} placeholder which is replaced with the version field value before fetching."
+          },
+          "path": {
+            "type": "string",
+            "description": "Subdirectory within the repository to restrict CRD scanning. Only used when type is git+github."
           },
           "version": {
             "type": "string",
@@ -113,6 +118,20 @@
             "then": {
               "required": [
                 "url"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "git+github"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "repo"
               ]
             }
           }

@@ -17,6 +17,7 @@ type Source struct {
 	Repo     string            `json:"repo,omitempty"`
 	Chart    string            `json:"chart,omitempty"`
 	URL      string            `json:"url,omitempty"`
+	Path     string            `json:"path,omitempty"`
 	Version  string            `json:"version"`
 	License  string            `json:"license"`
 	Homepage string            `json:"homepage"`

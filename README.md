@@ -2,14 +2,14 @@
 
 Extracts JSON schemas from Kubernetes CustomResourceDefinitions (CRDs) published by upstream operators and controllers.
 
-The extractor reads source configuration files, fetches CRDs from Helm charts (HTTP and OCI) or raw URLs, extracts the `openAPIV3Schema` from each served CRD version, and writes standalone JSON Schema files. Each schema includes provenance metadata and a CycloneDX SBOM for the full run.
+The extractor reads source configuration files, fetches CRDs from Helm charts (HTTP and OCI), raw URLs, or GitHub repository archives, extracts the `openAPIV3Schema` from each served CRD version, and writes standalone JSON Schema files. Each schema includes provenance metadata and a CycloneDX SBOM for the full run.
 
 ## Requirements
 
 - [Nix](https://nixos.org/) (recommended) -- provides Go and all tooling via `nix develop`
 - Or manually: Go 1.25+
 
-No external tools required at runtime. Helm chart fetching (both HTTP repos and OCI registries) and tarball extraction are implemented in pure Go using [oras-go](https://github.com/oras-project/oras-go).
+No external tools required at runtime. Helm chart fetching (both HTTP repos and OCI registries), GitHub archive downloads, and tarball extraction are all implemented in pure Go.
 
 ## Quick start
 
@@ -66,7 +66,7 @@ go run ./cmd/crd-schema-extractor/ validate sources/
 
 ## How it works
 
-1. Source configs in `sources/*.yaml` declare upstream CRD locations (Helm chart or URL)
+1. Source configs in `sources/*.yaml` declare upstream CRD locations (Helm chart, URL, or Git repository)
 2. The extractor fetches sources in parallel (configurable via `--parallel`), scans for CRD documents, and extracts the `openAPIV3Schema` from every served version
 3. Include/exclude filters narrow down which CRDs are kept
 4. Cross-source conflict detection catches the same group/kind/version with different content
@@ -76,11 +76,14 @@ go run ./cmd/crd-schema-extractor/ validate sources/
 
 Helm charts are scanned across all directories -- `crds/`, `templates/` (with Go template directive stripping), and any non-standard locations. This handles charts that place CRDs in different paths without requiring `helm template` at processing time.
 
+Git repository sources download a tag archive from GitHub and recursively scan for CRD YAML files. An optional `path` field restricts scanning to a specific subdirectory for performance on large repos.
+
 ## Adding a source
 
 Create or edit a YAML file in `sources/` named after the primary API group (e.g., `cert-manager.io.yaml`):
 
 ```yaml
+# Helm chart source
 sources:
   - name: cert-manager
     type: helm
@@ -97,12 +100,28 @@ sources:
       - SomeKind
 ```
 
+```yaml
+# Git repository source (for projects with CRDs committed in non-standard locations)
+sources:
+  - name: crossplane
+    type: git+github
+    repo: https://github.com/crossplane/crossplane
+    version: v1.17.2
+    license: Apache-2.0
+    homepage: https://crossplane.io
+    path: cluster/crds          # optional: restrict scan to subdirectory
+    include:
+      - "apiextensions.crossplane.io/*"
+      - "pkg.crossplane.io/*"
+```
+
 Source types:
 
 | Type | Required fields | Description |
 |------|----------------|-------------|
 | `helm` | `repo`, `chart` | Helm chart from HTTP or OCI (`oci://` prefix) repository |
 | `url` | `url` | Direct HTTP URL to a YAML manifest containing CRDs |
+| `git+github` | `repo` | GitHub repository archive at a specific tag. Supports optional `path` to restrict scanning. Uses `GITHUB_TOKEN` env var for authenticated requests |
 
 Source configs can be validated with the built-in command or against `source.schema.json`:
 
@@ -125,6 +144,7 @@ internal/
     helm_http.go                  Pure Go HTTP Helm repo fetcher (index.yaml + tarball)
     helm_oci.go                   OCI registry fetcher using oras-go
     url.go                        URL fetcher with retry
+    git.go                        GitHub archive fetcher (tarball download + auth)
     untar.go                      Tarball extraction utilities
   extractor/
     extractor.go                  Extract() pipeline entry point, CRD parser
@@ -145,7 +165,7 @@ flake.nix                         Nix flake (build + dev shell)
 
 Three GitHub Actions workflows:
 
-- **test.yml** (on PR): runs `go vet`, `go test -race`, and an E2E test that extracts schemas from cert-manager to verify the full pipeline
+- **test.yml** (on PR): runs `go vet`, `go test -race`, and an E2E test that extracts schemas from cert-manager (helm) and Crossplane (git+github) to verify the full pipeline
 - **release-drafter.yml** (on push to main): auto-maintains a draft GitHub release with changelog from merged PRs
 - **release.yaml** (on tag push): runs goreleaser to build binaries for linux/darwin (amd64/arm64), attach them to the release along with `source.schema.json` and checksums
 

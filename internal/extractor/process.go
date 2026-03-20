@@ -24,6 +24,8 @@ func Process(log zerolog.Logger, result *fetcher.Result, src source.Source) ([]C
 		return processHelm(log, result, src)
 	case "url":
 		return processRaw(log, result.Data)
+	case "git+github":
+		return processGit(log, result, src)
 	default:
 		return nil, fmt.Errorf("unknown source type for processing: %s", src.Type)
 	}
@@ -64,7 +66,7 @@ func processHelm(log zerolog.Logger, result *fetcher.Result, src source.Source) 
 
 	// 3. Scan remaining directories recursively for CRD files.
 	// This catches non-standard layouts like Kargo's resources/crds/.
-	schemas, err = scanTree(log, chartRoot, scanned)
+	schemas, err = scanTree(log, chartRoot, scanned, true)
 	if err != nil {
 		log.Warn().Err(err).Msg("scanning chart tree")
 	} else {
@@ -125,10 +127,10 @@ func scanDir(log zerolog.Logger, dir string, strip bool, scanned map[string]bool
 	return schemas, nil
 }
 
-// scanTree walks the chart directory recursively, scanning any YAML files
-// not already processed by scanDir. Files under templates/ subtrees get
-// template stripping applied.
-func scanTree(log zerolog.Logger, root string, scanned map[string]bool) ([]CRDSchema, error) {
+// scanTree walks a directory recursively, scanning any YAML files not already
+// processed by scanDir. When stripTemplates is true, files under templates/
+// subtrees get template stripping applied (appropriate for Helm charts).
+func scanTree(log zerolog.Logger, root string, scanned map[string]bool, stripTemplates bool) ([]CRDSchema, error) {
 	var schemas []CRDSchema
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
@@ -153,8 +155,8 @@ func scanTree(log zerolog.Logger, root string, scanned map[string]bool) ([]CRDSc
 			return nil
 		}
 
-		// Apply template stripping if the file is under a templates/ directory
-		if inTemplatesDir(path) {
+		// Apply template stripping if enabled and the file is under a templates/ directory
+		if stripTemplates && inTemplatesDir(path) {
 			data = StripTemplateDirectives(data)
 		}
 
@@ -175,6 +177,23 @@ func scanTree(log zerolog.Logger, root string, scanned map[string]bool) ([]CRDSc
 	})
 
 	return schemas, err
+}
+
+// processGit scans an extracted git repository archive for CRD YAML files.
+// If src.Path is set, only that subdirectory is scanned. No template stripping
+// is applied since git repos contain raw YAML, not Helm templates.
+func processGit(log zerolog.Logger, result *fetcher.Result, src source.Source) ([]CRDSchema, error) {
+	scanRoot := filepath.Join(result.Dir, "repo")
+	if src.Path != "" {
+		scanRoot = filepath.Join(scanRoot, src.Path)
+	}
+
+	if _, err := os.Stat(scanRoot); err != nil {
+		return nil, fmt.Errorf("scan path %q not found in repository: %w", src.Path, err)
+	}
+
+	scanned := make(map[string]bool)
+	return scanTree(log, scanRoot, scanned, false)
 }
 
 func isYAMLFile(name string) bool {

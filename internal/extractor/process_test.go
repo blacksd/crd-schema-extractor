@@ -198,7 +198,7 @@ func TestProcessRaw(t *testing.T) {
 
 func TestProcessUnknownType(t *testing.T) {
 	result := &fetcher.Result{Data: []byte("data")}
-	src := source.Source{Name: "test", Type: "git"}
+	src := source.Source{Name: "test", Type: "foobar"}
 
 	_, err := Process(nopLog, result, src)
 	if err == nil {
@@ -239,6 +239,98 @@ spec:
 	}
 	if len(schemas) != 2 {
 		t.Fatalf("expected 2 schemas from multi-doc file, got %d", len(schemas))
+	}
+}
+
+// setupGitRepoDir creates a directory structure mimicking an extracted git repo archive.
+func setupGitRepoDir(t *testing.T, files map[string]string) string {
+	t.Helper()
+	tmpDir := t.TempDir()
+	repoRoot := filepath.Join(tmpDir, "repo")
+
+	for relPath, content := range files {
+		fullPath := filepath.Join(repoRoot, relPath)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+			t.Fatalf("creating dir for %s: %v", relPath, err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatalf("writing %s: %v", relPath, err)
+		}
+	}
+
+	return tmpDir
+}
+
+func TestProcessGit(t *testing.T) {
+	dir := setupGitRepoDir(t, map[string]string{
+		"cluster/crds/foo-crd.yaml": rawCRDYAML,
+	})
+
+	result := &fetcher.Result{Dir: dir}
+	src := source.Source{Name: "test", Type: "git+github"}
+
+	schemas, err := Process(nopLog, result, src)
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if len(schemas) != 1 {
+		t.Fatalf("expected 1 schema, got %d", len(schemas))
+	}
+	if schemas[0].Kind != "Foo" {
+		t.Errorf("kind = %q, want Foo", schemas[0].Kind)
+	}
+}
+
+func TestProcessGitWithPath(t *testing.T) {
+	dir := setupGitRepoDir(t, map[string]string{
+		"cluster/crds/foo-crd.yaml":                    rawCRDYAML,
+		"pkg/k8s/apis/cilium.io/client/crds/bar.yaml":  rawCRDYAML,
+	})
+
+	result := &fetcher.Result{Dir: dir}
+	src := source.Source{Name: "test", Type: "git+github", Path: "cluster/crds"}
+
+	schemas, err := Process(nopLog, result, src)
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	if len(schemas) != 1 {
+		t.Fatalf("expected 1 schema (path-restricted), got %d", len(schemas))
+	}
+}
+
+func TestProcessGitInvalidPath(t *testing.T) {
+	dir := setupGitRepoDir(t, map[string]string{
+		"crds/foo.yaml": rawCRDYAML,
+	})
+
+	result := &fetcher.Result{Dir: dir}
+	src := source.Source{Name: "test", Type: "git+github", Path: "nonexistent/path"}
+
+	_, err := Process(nopLog, result, src)
+	if err == nil {
+		t.Fatal("expected error for nonexistent path")
+	}
+}
+
+func TestProcessGitNoTemplateStripping(t *testing.T) {
+	// A file in a templates/ directory should NOT have template directives stripped
+	// when processed as a git source. The raw {{ }} content means it won't parse
+	// as valid CRD YAML, so we should get 0 schemas (not 1 like helm would).
+	dir := setupGitRepoDir(t, map[string]string{
+		"templates/foo-crd.yaml": templatedCRDYAML,
+	})
+
+	result := &fetcher.Result{Dir: dir}
+	src := source.Source{Name: "test", Type: "git+github"}
+
+	schemas, err := Process(nopLog, result, src)
+	if err != nil {
+		t.Fatalf("Process: %v", err)
+	}
+	// Template directives are not stripped, so the YAML is unparseable as a CRD
+	if len(schemas) != 0 {
+		t.Errorf("expected 0 schemas (no template stripping), got %d", len(schemas))
 	}
 }
 

@@ -1,5 +1,5 @@
 // Package fetcher abstracts the retrieval of upstream CRD content.
-// Each transport (Helm HTTP, Helm OCI, URL) implements the Fetcher interface.
+// Each transport (Helm HTTP, Helm OCI, URL, Git) implements the Fetcher interface.
 package fetcher
 
 import (
@@ -29,6 +29,8 @@ func New(src source.Source) (Fetcher, error) {
 		return newHelmFetcher(src), nil
 	case "url":
 		return &URLFetcher{}, nil
+	case "git+github":
+		return &GitHubFetcher{}, nil
 	default:
 		return nil, fmt.Errorf("unknown source type: %s", src.Type)
 	}

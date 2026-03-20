@@ -40,6 +40,8 @@ jobs:
 
       - name: Extract schemas
         run: ./crd-schema-extractor extract test/sources/ -o e2e-schemas --debug
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify output structure
         run: |

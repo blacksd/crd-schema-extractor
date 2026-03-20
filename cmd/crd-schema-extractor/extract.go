@@ -297,23 +297,30 @@ func runFetchOnly(sourcesPath, outputDir string, parallel int) error {
 		}
 
 		if fr.result.Dir != "" {
-			// Move chart contents from temp dir into output
-			chartDir := filepath.Join(fr.result.Dir, "chart")
-			entries, err := os.ReadDir(chartDir)
+			// Determine content directory based on source type
+			var contentDir string
+			switch src.Type {
+			case "git+github":
+				contentDir = filepath.Join(fr.result.Dir, "repo")
+			default:
+				contentDir = filepath.Join(fr.result.Dir, "chart")
+			}
+
+			entries, err := os.ReadDir(contentDir)
 			if err != nil {
-				srcLog.Warn().Err(err).Msg("reading fetched chart dir")
+				srcLog.Warn().Err(err).Msg("reading fetched content dir")
 				os.RemoveAll(fr.result.Dir)
 				continue
 			}
 			for _, entry := range entries {
-				from := filepath.Join(chartDir, entry.Name())
+				from := filepath.Join(contentDir, entry.Name())
 				to := filepath.Join(destDir, entry.Name())
 				if err := os.Rename(from, to); err != nil {
-					srcLog.Warn().Err(err).Str("from", from).Str("to", to).Msg("moving chart content")
+					srcLog.Warn().Err(err).Str("from", from).Str("to", to).Msg("moving content")
 				}
 			}
 			os.RemoveAll(fr.result.Dir)
-			srcLog.Info().Str("dir", destDir).Msg("fetched chart")
+			srcLog.Info().Str("dir", destDir).Msg("fetched content")
 		} else {
 			// Write raw manifest data to file
 			manifestPath := filepath.Join(destDir, "manifest.yaml")

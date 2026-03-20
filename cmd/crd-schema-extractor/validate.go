@@ -68,6 +68,13 @@ func validateRunE(cmd *cobra.Command, args []string) error {
 			if src.URL != "" && !strings.Contains(src.URL, "{version}") {
 				errs = append(errs, fmt.Sprintf("source %s: url must contain {version} placeholder to keep version in sync", src.Name))
 			}
+		case "git+github":
+			if src.Repo == "" {
+				errs = append(errs, fmt.Sprintf("source %s: git+github type requires 'repo' field", src.Name))
+			}
+			if src.Repo != "" && !strings.HasPrefix(src.Repo, "https://github.com/") {
+				errs = append(errs, fmt.Sprintf("source %s: git+github type requires a GitHub repository URL (https://github.com/...)", src.Name))
+			}
 		case "":
 			errs = append(errs, fmt.Sprintf("source %s: missing 'type' field", src.Name))
 		default:

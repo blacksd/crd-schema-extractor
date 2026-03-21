@@ -206,18 +206,36 @@ func runExtract(sourcesPath, outputDir string, parallel int) error {
 		}
 	}
 
-	// Generate SBOM
-	sbomJSON, err := sbom.Generate(allSrcList, timestamp)
-	if err != nil {
-		return err
+	// Generate per-API-group SBOMs
+	groupSources := make(map[string][]source.Source)
+	for _, e := range dedupedEntries {
+		group := e.schema.Group
+		if !containsSource(groupSources[group], e.src) {
+			groupSources[group] = append(groupSources[group], e.src)
+		}
 	}
 
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return err
-	}
-	sbomPath := filepath.Join(outputDir, "sbom.cdx.json")
-	if err := os.WriteFile(sbomPath, sbomJSON, 0644); err != nil {
-		return err
+	for group, sources := range groupSources {
+		sbomPath := filepath.Join(outputDir, group, "sbom.cdx.json")
+		existing, err := sbom.LoadExisting(sbomPath)
+		if err != nil {
+			log.Warn().Err(err).Str("group", group).Msg("loading existing SBOM")
+		}
+		if !sbom.HasChanged(sources, existing) {
+			log.Debug().Str("group", group).Msg("SBOM unchanged, skipping")
+			continue
+		}
+		sbomJSON, err := sbom.Generate(sources, timestamp, existing)
+		if err != nil {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Join(outputDir, group), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(sbomPath, sbomJSON, 0644); err != nil {
+			return err
+		}
+		log.Info().Str("group", group).Int("sources", len(sources)).Msg("wrote SBOM")
 	}
 
 	log.Info().
@@ -333,6 +351,16 @@ func runFetchOnly(sourcesPath, outputDir string, parallel int) error {
 
 	log.Info().Int("sources", totalSources).Str("output", outputDir).Msg("fetch complete")
 	return nil
+}
+
+// containsSource reports whether the slice already contains a source with the given name.
+func containsSource(sources []source.Source, src source.Source) bool {
+	for _, s := range sources {
+		if s.Name == src.Name {
+			return true
+		}
+	}
+	return false
 }
 
 // fileContentEqual returns true if the file at path exists and its content

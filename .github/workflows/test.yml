@@ -56,12 +56,23 @@ jobs:
           fi
           echo "OK: $count schema files extracted"
 
-          # Verify SBOM exists
-          if [ ! -f e2e-schemas/sbom.cdx.json ]; then
-            echo "FAIL: sbom.cdx.json not found"
+          # Verify per-group SBOMs exist
+          sbom_count=$(find e2e-schemas -name 'sbom.cdx.json' | wc -l)
+          if [ "$sbom_count" -lt 1 ]; then
+            echo "FAIL: no per-group sbom.cdx.json files found"
             exit 1
           fi
-          echo "OK: sbom.cdx.json exists"
+          echo "OK: $sbom_count per-group SBOM files found"
+
+          # Verify each SBOM has a serialNumber
+          for sbom in $(find e2e-schemas -name 'sbom.cdx.json'); do
+            sn=$(jq -r '.serialNumber // empty' "$sbom")
+            if [ -z "$sn" ]; then
+              echo "FAIL: $sbom missing serialNumber"
+              exit 1
+            fi
+            echo "OK: $sbom has serialNumber $sn"
+          done
 
           # Verify extracted schemas are valid JSON Schemas
           pip install --quiet check-jsonschema
